@@ -16,7 +16,13 @@
  * License along with this library.  If not, see <http://www.gnu.org/licenses/>.
  * 
  ---><cfcomponent>
-	
+
+
+
+    <cfset variables.oldJars=["lucee-extension-memcache.jar","java_memcached-release.jar"]>
+    <cfset variables.oldContext=["MemCached.cfc"]>
+
+
     
     <cffunction name="validate" returntype="void" output="no"
     	hint="called to validate values">
@@ -32,58 +38,75 @@
     	<cfargument name="error" type="struct">
         <cfargument name="path" type="string">
         <cfargument name="config" type="struct">
-        
-        <cffile action="copy" source="#path#lib/java_memcached-release.jar" destination="#getLibFolder()#/java_memcached-release.jar">
-            
+
         <cfadmin 
             action="updateJar"
             type="#request.adminType#"
             password="#session["password"&request.adminType]#"
-            jar="#path#lib/lucee-extension-memcache.jar">
+            jar="#path#jars/memcached-2-5-1.jar">
+
+
+        <cfadmin 
+            action="updateJar"
+            type="#request.adminType#"
+            password="#session["password"&request.adminType]#"
+            jar="#path#jars/lucee-extension-memcached.jar">
             
         <cfadmin 
         	action="updateContext"
             type="#request.adminType#"
             password="#session["password"&request.adminType]#"
-            source="#path#driver/MemCache.cfc"
-            destination="admin/cdriver/MemCache.cfc">
+            source="#path#context/admin/cdriver/MemCached.cfc"
+            destination="admin/cdriver/MemCached.cfc">
 
-        <cfreturn 'Memcache Driver is now successfully installed, you must restart the Application Server/Servlet Engine before you can use it.'>
+        <cfreturn 'Memcached Driver is now successfully installed, you must restart the Application Server/Servlet Engine before you can use it.'>
     </cffunction>
     	
      <cffunction name="update" returntype="string" output="no"
     	hint="called from Lucee to update a existing application">
-    	<cfargument name="error" type="struct">
+    	<cfargument name="error" type="struct" default="#{}#">
         <cfargument name="path" type="string">
         <cfargument name="config" type="struct">
         
-        <cfadmin 
-            action="removeJar"
-            type="#request.adminType#"
-            password="#session["password"&request.adminType]#"
-            jar="lucee-extension-memcache.jar">
+        <!--- remove old version jars --->
+        <cfloop array="#variables.oldJars#" item="local.jarName">
+            <cftry>
+                <cfadmin 
+                    action="removeJar"
+                    type="#request.adminType#"
+                    password="#session["password"&request.adminType]#"
+                    jar="#local.jarName#">
+                <cfcatch></cfcatch>
+            </cftry>
+        </cfloop>
         
-            
-		<cfadmin 
-        	action="removeContext"
-            type="#request.adminType#"
-            password="#session["password"&request.adminType]#"
-            destination="admin/cdriver/MemCache.cfc">
-        
+        <!--- remove old contexts --->
+        <cfloop array="#variables.oldContext#" item="local.contextName">
+            <cftry>
+                <cfadmin 
+                    action="removeContext"
+                    type="#request.adminType#"
+                    password="#session["password"&request.adminType]#"
+                    destination="admin/cdriver/#local.contextName#">
+                <cfcatch></cfcatch>
+            </cftry>
+        </cfloop>
+
+
         <cfadmin 
             action="updateJar"
             type="#request.adminType#"
             password="#session["password"&request.adminType]#"
-            jar="#path#lib/lucee-extension-memcache.jar">
+            jar="#path#jars/lucee-extension-memcached.jar">
             
         <cfadmin 
         	action="updateContext"
             type="#request.adminType#"
             password="#session["password"&request.adminType]#"
-            source="#path#driver/MemCache.cfc"
-            destination="admin/cdriver/MemCache.cfc">
+            source="#path#context/admin/cdriver/MemCached.cfc"
+            destination="admin/cdriver/MemCached.cfc">
 
-        <cfreturn 'Memcache Driver is now successfully updated.'>
+        <cfreturn 'Memcached Driver is now successfully updated.'>
         
     </cffunction>
     
@@ -97,19 +120,21 @@
             action="removeJar"
             type="#request.adminType#"
             password="#session["password"&request.adminType]#"
-            jar="lucee-extension-memcache.jar">
+            jar="lucee-extension-memcached.jar">
         
         <cftry>
-        	<cffile action="delete" file="#path#lib/java_memcached-release.jar">
+        	<cffile action="delete" file="#path#jars/memcached-2-5-1.jar">
         	<cfcatch></cfcatch>
         </cftry>
 		<cfadmin 
         	action="removeContext"
             type="#request.adminType#"
             password="#session["password"&request.adminType]#"
-            destination="admin/cdriver/MemCache.cfc">
+            destination="admin/cdriver/MemCached.cfc">
         
-        <cfreturn 'Memcache Driver is now successfully removed'>
+        <cfset install(argumentsCollection=arguments)>
+
+        <cfreturn 'Memcached Driver is now successfully removed'>
     </cffunction>
     
     
