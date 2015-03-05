@@ -29,17 +29,19 @@ import org.lucee.extension.io.cache.CacheUtil;
 
 public class MemCacheEntry implements CacheEntry,Serializable {
 
+	private static final long serialVersionUID = -9099108476585093711L;
+
 	private String key;
 	private Object value;
 	private long created;
 	private Long idleTime;
-	private Long until;
+	//private Long until;
 
 	public MemCacheEntry(String key, Object value, Long idleTime, Long until) {
 		this.key=key;
 		this.value=value;
 		this.idleTime=idleTime;
-		this.until=until;
+		//this.until=until;
 		this.created=System.currentTimeMillis();
 	}
 
@@ -65,7 +67,6 @@ public class MemCacheEntry implements CacheEntry,Serializable {
 	}
 
 	public int hitCount() {
-		// TODO Auto-generated method stub
 		return 0;
 	}
 
@@ -75,22 +76,18 @@ public class MemCacheEntry implements CacheEntry,Serializable {
 	}
 
 	public Date lastHit() {
-		// TODO Auto-generated method stub
 		return null;
 	}
 
 	public Date lastModified() {
-		// TODO Auto-generated method stub
 		return null;
 	}
 
 	public long liveTimeSpan() {
-		// TODO Auto-generated method stub
 		return 0;
 	}
 
 	public long size() {
-		// TODO Auto-generated method stub
 		return 0;
 	}
 

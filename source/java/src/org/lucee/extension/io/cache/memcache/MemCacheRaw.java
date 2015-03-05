@@ -45,7 +45,7 @@ public class MemCacheRaw implements Cache {
 	MemCachedClient _cache = null;
 	private int hits;
 	private int misses;
-	private Config config;
+	//private Config config;
 	private Struct arguments;
 	private String cacheName;
 	private SockIOPool pool;
@@ -65,7 +65,7 @@ public class MemCacheRaw implements Cache {
 		// no longer used
 	}
 	public void init(Config config,String cacheName,Struct arguments) throws IOException {
-		this.config=config;
+		//this.config=config;
 		this.cacheName=cacheName;
 		this.arguments=arguments;
 		
@@ -88,7 +88,7 @@ public class MemCacheRaw implements Cache {
 		if(_cache==null) {
 			createPoolIfNecessary();
 			_cache = new MemCachedClient(cacheName);
-			_cache.setClassLoader(config.getClassLoader());
+			//_cache.setClassLoader(config.getClassLoader());
 		}
 		return _cache;
 	}
@@ -297,56 +297,56 @@ public class MemCacheRaw implements Cache {
 	/**
 	 * @see railo.commons.io.cache.Cache#values()
 	 */
-	public List values() {
+	public List<Object> values() {
 		throw notSupported("values");
 	}
 
 	/**
 	 * @see railo.commons.io.cache.Cache#values(railo.commons.io.cache.CacheKeyFilter)
 	 */
-	public List values(CacheKeyFilter filter) {
+	public List<Object> values(CacheKeyFilter filter) {
 		throw notSupported("entries:key filter");
 	}
 
 	/**
 	 * @see railo.commons.io.cache.Cache#values(railo.commons.io.cache.CacheEntryFilter)
 	 */
-	public List values(CacheEntryFilter filter) {
+	public List<Object> values(CacheEntryFilter filter) {
 		throw notSupported("values:entry filter");
 	}
 	
 	/**
 	 * @see railo.commons.io.cache.Cache#entries()
 	 */
-	public List entries() {
+	public List<CacheEntry> entries() {
 		throw notSupported("entries");
 	}
 
 	/**
 	 * @see railo.commons.io.cache.Cache#entries(railo.commons.io.cache.CacheKeyFilter)
 	 */
-	public List entries(CacheKeyFilter filter) {
+	public List<CacheEntry> entries(CacheKeyFilter filter) {
 		throw notSupported("entries:key filter");
 	}
 
 	/**
 	 * @see railo.commons.io.cache.Cache#entries(railo.commons.io.cache.CacheEntryFilter)
 	 */
-	public List entries(CacheEntryFilter filter) {
+	public List<CacheEntry> entries(CacheEntryFilter filter) {
 		throw notSupported("entries:entry filter");
 	}
 
 	/**
 	 * @see railo.commons.io.cache.Cache#keys()
 	 */
-	public List keys() {
+	public List<String> keys() {
 		throw notSupported("keys");
 	}
 
 	/**
 	 * @see railo.commons.io.cache.Cache#keys(railo.commons.io.cache.CacheKeyFilter)
 	 */
-	public List keys(CacheKeyFilter filter) {
+	public List<String> keys(CacheKeyFilter filter) {
 		throw notSupported("keys:key filter");
 	}
 
