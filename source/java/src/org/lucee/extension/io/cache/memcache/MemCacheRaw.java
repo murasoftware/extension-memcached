@@ -35,8 +35,8 @@ import lucee.runtime.util.Cast;
 import org.lucee.extension.io.cache.CacheKeyFilterAll;
 import org.lucee.extension.io.cache.CacheUtil;
 
-import com.danga.MemCached.MemCachedClient;
-import com.danga.MemCached.SockIOPool;
+import com.whalin.MemCached.MemCachedClient;
+import com.whalin.MemCached.SockIOPool;
 
 public class MemCacheRaw implements Cache {
 
@@ -129,7 +129,7 @@ public class MemCacheRaw implements Cache {
 			if(maxConn>0)pool.setMaxConn(maxConn);
 			
 			int maxIdle=cast.toIntValue(arguments.get("max_idle_time",5),5);
-			if(maxIdle>0)pool.setMaxIdle(maxIdle*1000L);
+			if(maxIdle>0)pool.setMaxIdle(maxIdle*1000);
 			
 			int maxBusy=cast.toIntValue(arguments.get("max_busy_time",30),30);
 			if(maxBusy>0)pool.setMaxBusyTime(maxBusy*1000L);

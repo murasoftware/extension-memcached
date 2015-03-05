@@ -39,6 +39,8 @@
         <include name="**/*.jar"/>
         <exclude name="**/lucee.jar"/>
         <exclude name="**/javax.servlet.jar"/>
+        <exclude name="**/slf4j-*.jar"/>
+        <exclude name="**/org-apache-oro-*.jar"/>
       </fileset>
     </copy>
 
