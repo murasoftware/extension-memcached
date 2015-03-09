@@ -249,13 +249,20 @@ public class MemCacheRaw implements Cache {
 	 * @see railo.commons.io.cache.Cache#put(java.lang.String, java.lang.Object, java.lang.Long, java.lang.Long)
 	 */
 	public void put(String key, Object value, Long idleTime, Long until) {
-		if(until==null){
+		long time;
+
+		// expire
+		if(until!=null) time=until.longValue();
+		else if(idleTime!=null) time=idleTime.longValue();
+		else time=0;
+		
+		if(time<=0){
 			getCacheEL().set(key,value);
 		}
 		else{
 			getCacheEL().set(key,value, 
 					CFMLEngineFactory.getInstance().getCreationUtil().createDate(
-							until.longValue()+System.currentTimeMillis()));
+							time+System.currentTimeMillis()));
 		}
 		
 		
