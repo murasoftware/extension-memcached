@@ -18,6 +18,8 @@
  **/
 package org.lucee.extension.io.cache;
 
+import java.io.IOException;
+
 import lucee.commons.io.cache.Cache;
 import lucee.commons.io.cache.CacheEntry;
 import lucee.loader.engine.CFMLEngineFactory;
@@ -46,12 +48,14 @@ public class CacheUtil {
 
 	public static Struct getInfo(Cache c) {
 		Struct info=CFMLEngineFactory.getInstance().getCreationUtil().createStruct();
-
-		long value = c.hitCount();
-		if(value>=0)info.setEL("hit_count", new Double(value));
-		value = c.missCount();
-		if(value>=0)info.setEL("miss_count", new Double(value));
-		
+		try{
+			long value = c.hitCount();
+			if(value>=0)info.setEL("hit_count", new Double(value));
+		}catch(Throwable t){} // we use Throwable instead of IOException to make it also work with Lucee 4.5
+		try{
+			long value = c.missCount();
+			if(value>=0)info.setEL("miss_count", new Double(value));
+		}catch(Throwable t){} // we use Throwable instead of IOException to make it also work with Lucee 4.5
 		return info;
 	}
 

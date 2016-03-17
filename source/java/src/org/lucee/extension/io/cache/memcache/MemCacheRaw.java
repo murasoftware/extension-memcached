@@ -40,7 +40,8 @@ import com.whalin.MemCached.SockIOPool;
 
 public class MemCacheRaw implements Cache {
 
-	
+	public static final int STORAGE_FORMAT_BINARY=1;
+	public static final int STORAGE_FORMAT_JSON=2;
 	
 	MemCachedClient _cache = null;
 	private int hits;
@@ -49,6 +50,7 @@ public class MemCacheRaw implements Cache {
 	private Struct arguments;
 	private String cacheName;
 	private SockIOPool pool;
+	private int storageFormat=STORAGE_FORMAT_BINARY;
 	
 	
 	public static void init(Config config,String[] cacheNames,Struct[] arguments) throws IOException {
@@ -119,6 +121,11 @@ public class MemCacheRaw implements Cache {
 			
 			
 			// settings
+			
+			String str = cast.toString(arguments.get("storage_format",1),"binary");
+			if("json".equalsIgnoreCase(str.trim())) storageFormat=STORAGE_FORMAT_JSON;
+				
+			
 			int initConn = cast.toIntValue(arguments.get("initial_connections",1),1);
 			if(initConn>0)pool.setInitConn(initConn);
 			

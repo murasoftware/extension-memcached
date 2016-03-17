@@ -20,6 +20,14 @@
     <cfset fields=array(
 		field("Servers","servers","",true,"please define here a list of all Servers you wanna connect, please follow this pattern:<br> Host:Port&lt;new line><br> Host:Port&lt;new line><br>Host:Port","textarea")
 		
+		,field("Storage Format","storage_format","binary",true,
+			{
+			_top:"Choose the format used to store the data",
+			off:" distribution is disabled",
+			binary:"fastest way to read/write values from/to memcached that support a wide variety of types (all Serializable Objects) ",
+    		json:"slower way to read/write values from/to memcached that only supporting a limited amout of types. This format allows to you Couchbase as a back end."},
+			"radio","Binary,JSON")
+
 		,field("Initial connections","initial_connections","1",false,"how many initial connetions are set (initial setting ""1"")","text")
 		,field("Minimal spare connections","min_spare_connections","1",false,"minimal amount of connections (initial setting ""1"")","text")
 		,field("Maximal spare connections","max_spare_connections","32",false,"maximal amount of connections (initial setting ""32"")","text")
