@@ -61,7 +61,16 @@ cache: "[{'class':'${class}','bundleName':'${bundlename}','bundleVersion':'${bun
     <move 
       file="${dist}/extension2/jars/lucee-extension-${codename}.jar" 
       tofile="${dist}/extension2/jars/lucee-extension-${codename}-${bundleversion}${build.number}.jar"/>
-    <!-- -->
+    
+
+    <!-- copy the context necessary -->
+    <loadfile property="content1" srcFile="${build}/context/admin/cdriver/${camelname}.cfc" />
+    <replace haystack="${content1}" needle="{class}" repl="${class}" property="content2"/>
+    <replace haystack="${content2}" needle="{label}" repl="${label}" property="content3"/>
+    <replace haystack="${content3}" needle="{desc}" repl="${description}" property="content4"/>
+    <echo message="${content4}" file="${dist}/extension2/context/admin/cdriver/${camelname}.cfc"/>
+
+
 
     <!-- copy the logo -->
     <copy todir="${dist}/extension2/META-INF">
