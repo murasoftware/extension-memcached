@@ -1,5 +1,5 @@
 Manifest-Version: 1.0
 Export-Package: org.lucee.extension.io.cache.memcache
 Bundle-ManifestVersion: 2
-Require-Bundle: memcached;bundle-version=2.5.1,
+Require-Bundle: memcached;bundle-version=3.0.2,
  org.apache.oro;bundle-version=2.0.8
