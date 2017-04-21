@@ -60,7 +60,7 @@ cache: "[{'class':'${class}','bundleName':'${bundlename}','bundleVersion':'${bun
     </copy>
     <move 
       file="${dist}/extension2/jars/lucee-extension-${codename}.jar" 
-      tofile="${dist}/extension2/jars/lucee-extension-${codename}-${bundleversion}${build.number}.jar"/>
+      tofile="${dist}/extension2/jars/${bundlename}-${bundleversion}${build.number}.jar"/>
     
 
     <!-- copy the context necessary -->

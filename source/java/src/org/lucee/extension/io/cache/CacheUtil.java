@@ -51,11 +51,11 @@ public class CacheUtil {
 		try{
 			long value = c.hitCount();
 			if(value>=0)info.setEL("hit_count", new Double(value));
-		}catch(Throwable t){} // we use Throwable instead of IOException to make it also work with Lucee 4.5
+		}catch(Exception e) {} // we use Exception instead of IOException to make it also work with Lucee 4.5
 		try{
 			long value = c.missCount();
 			if(value>=0)info.setEL("miss_count", new Double(value));
-		}catch(Throwable t){} // we use Throwable instead of IOException to make it also work with Lucee 4.5
+		}catch(Exception e) {} // we use Exception instead of IOException to make it also work with Lucee 4.5
 		return info;
 	}
 

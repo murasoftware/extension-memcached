@@ -19,7 +19,10 @@
 package org.lucee.extension.io.cache.memcache;
 
 import java.io.IOException;
+import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 
 import lucee.commons.io.cache.Cache;
 import lucee.commons.io.cache.CacheEntry;
@@ -51,6 +54,8 @@ public class MemCacheRaw implements Cache {
 	private String cacheName;
 	private SockIOPool pool;
 	private int storageFormat=STORAGE_FORMAT_BINARY;
+	//private static Map<String,SockIOPool> pools=new HashMap<String, SockIOPool>();
+	private ClassLoader cl;
 	
 	
 	public static void init(Config config,String[] cacheNames,Struct[] arguments) throws IOException {
@@ -70,12 +75,22 @@ public class MemCacheRaw implements Cache {
 		//this.config=config;
 		this.cacheName=cacheName;
 		this.arguments=arguments;
-		
+		this.cl=config.getClassLoader();
 		try {
 			getCache();
 		} catch (PageException e) {
 			throw new IOException(e);
 		}
+	}
+	
+	public void release() {
+		if(pool==null) return;
+		pool.shutDown();
+		pool=null;
+	}
+	
+	protected void finalize() {
+		release();
 	}
 	
 	private MemCachedClient getCacheEL() {
@@ -90,7 +105,7 @@ public class MemCacheRaw implements Cache {
 		if(_cache==null) {
 			createPoolIfNecessary();
 			_cache = new MemCachedClient(cacheName);
-			//_cache.setClassLoader(config.getClassLoader());
+			_cache.setTransCoder(new TransCoderImpl(cl));
 		}
 		return _cache;
 	}
@@ -99,7 +114,7 @@ public class MemCacheRaw implements Cache {
 		if(pool==null) {
 		
 			pool = SockIOPool.getInstance(cacheName);
-		
+			//pools.put(cacheName,pool);
 			Cast cast = CFMLEngineFactory.getInstance().getCastUtil();
 		
 			String[] servers;
@@ -117,14 +132,10 @@ public class MemCacheRaw implements Cache {
 					servers[i]=servers[i].trim();
 				}
 			}
-			
-			
-			
+
 			// settings
-			
 			String str = cast.toString(arguments.get("storage_format",1),"binary");
 			if("json".equalsIgnoreCase(str.trim())) storageFormat=STORAGE_FORMAT_JSON;
-				
 			
 			int initConn = cast.toIntValue(arguments.get("initial_connections",1),1);
 			if(initConn>0)pool.setInitConn(initConn);
