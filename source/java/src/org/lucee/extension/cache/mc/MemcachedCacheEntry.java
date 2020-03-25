@@ -4,28 +4,32 @@ import java.io.Serializable;
 import java.util.Date;
 
 import lucee.commons.io.cache.CacheEntry;
+import lucee.loader.engine.CFMLEngineFactory;
 import lucee.runtime.type.Struct;
 
 public class MemcachedCacheEntry implements CacheEntry, Serializable {
 
+	private static final long serialVersionUID = -1726639719761934902L;
+
 	private String key;
 	private Object value;
+	private long created;
+	private Long idleTime;
 
-	public MemcachedCacheEntry(String key, Object value) {
+	public MemcachedCacheEntry(String key, Object value, Long idleTime, Long until) {
 		this.key = key;
 		this.value = value;
+		this.created = System.currentTimeMillis();
 	}
 
 	@Override
 	public Date created() {
-		// TODO Auto-generated method stub
-		return null;
+		return CFMLEngineFactory.getInstance().getCreationUtil().createDate(created);
 	}
 
 	@Override
 	public Struct getCustomInfo() {
-		// TODO Auto-generated method stub
-		return null;
+		return CacheUtil.getInfo(this);
 	}
 
 	@Override
@@ -40,36 +44,33 @@ public class MemcachedCacheEntry implements CacheEntry, Serializable {
 
 	@Override
 	public int hitCount() {
-		return -1;
-	}
-
-	@Override
-	public long idleTimeSpan() {
-		// TODO Auto-generated method stub
 		return 0;
 	}
 
 	@Override
+	public long idleTimeSpan() {
+		if (idleTime == null)
+			return Long.MIN_VALUE;
+		return idleTime.longValue();
+	}
+
+	@Override
 	public Date lastHit() {
-		// TODO Auto-generated method stub
 		return null;
 	}
 
 	@Override
 	public Date lastModified() {
-		// TODO Auto-generated method stub
 		return null;
 	}
 
 	@Override
 	public long liveTimeSpan() {
-		// TODO Auto-generated method stub
 		return 0;
 	}
 
 	@Override
 	public long size() {
-		// TODO Auto-generated method stub
 		return 0;
 	}
 

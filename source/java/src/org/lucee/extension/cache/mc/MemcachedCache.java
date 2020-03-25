@@ -1,6 +1,7 @@
 package org.lucee.extension.cache.mc;
 
 import java.io.IOException;
+import java.lang.reflect.Method;
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
 import java.util.Collection;
@@ -96,12 +97,10 @@ public class MemcachedCache extends CacheSupport {
 		return _client;
 	}
 
-	// client.removeObserver(obs)
-
 	@Override
 	public CachePro decouple() {
-		// TODO
-		return null;
+		// is already decoupled by default
+		return this;
 	}
 
 	@Override
@@ -230,7 +229,7 @@ public class MemcachedCache extends CacheSupport {
 
 	@Override
 	public List<String> keys() throws IOException {
-		// TODO Auto-generated method stub
+		// TODO
 		return null;
 	}
 
@@ -250,7 +249,7 @@ public class MemcachedCache extends CacheSupport {
 			exp = defaultExpires;
 		}
 		getCache().set(keyTranslate(key), exp > DAY ? ((int) (System.currentTimeMillis() / 1000L)) + exp : exp,
-				new MemcachedCacheEntry(key, val), transcoder);
+				new MemcachedCacheEntry(key, val, null, null), transcoder);
 	}
 
 	//
@@ -272,7 +271,6 @@ public class MemcachedCache extends CacheSupport {
 
 	@Override
 	public CacheEntry getQuiet(String key, CacheEntry defaultValue) {
-		// TODO
 		return getCacheEntry(key, defaultValue);
 	}
 
@@ -297,10 +295,14 @@ public class MemcachedCache extends CacheSupport {
 		// cache entry from different classloader?
 		if (CFMLEngineFactory.getInstance().getClassUtil().isInstaneOf(obj.getClass(), CacheEntry.class)) {
 			log("different classloader");
-			// read data out by redflection
+			try {
+				Method m = obj.getClass().getMethod("getValue", new Class[0]);
+				obj = m.invoke(obj, new Object[0]);
+			} catch (Exception e) {
+			}
 		}
 		log("object is not a cache entry");
-		return new MemcachedCacheEntry(key, obj);
+		return new MemcachedCacheEntry(key, obj, null, null);
 	}
 
 	private void log(String msg) {
