@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.lang.reflect.Method;
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -20,6 +21,8 @@ import lucee.runtime.exp.PageException;
 import lucee.runtime.type.Struct;
 import lucee.runtime.util.Cast;
 import lucee.runtime.util.ListUtil;
+import net.spy.memcached.ConnectionFactoryBuilder;
+import net.spy.memcached.FailureMode;
 import net.spy.memcached.MemcachedClient;
 import net.spy.memcached.internal.OperationFuture;
 
@@ -32,16 +35,19 @@ public class MemcachedCache extends CacheSupport {
 	private String cacheName;
 	private Struct arguments;
 	private ClassLoader cl;
-	private TranscoderImpl transcoder;
-	private InetSocketAddress[] addresses;
+	private TranscoderImpl _transcoder;
+	private List<InetSocketAddress> addresses;
 	private int defaultExpires;
+
+	public static void init(Config config, String[] cacheNames, Struct[] arguments) throws IOException {
+	}
 
 	// stats items
 	@Override
 	public void init(Config config, String cacheName, Struct arguments) throws IOException {
 		this.cacheName = cacheName;
 		this.arguments = arguments;
-		transcoder = new TranscoderImpl(config.getClassLoader());
+		_transcoder = new TranscoderImpl(config.getClassLoader());
 	}
 
 	private MemcachedClient getCacheEL() {
@@ -58,28 +64,27 @@ public class MemcachedCache extends CacheSupport {
 			Cast cast = engine.getCastUtil();
 
 			// host(s)/port(s)
-			InetSocketAddress[] addresses = null;
+			List<InetSocketAddress> addresses = new ArrayList<>();
 			try {
 				String strServers = cast.toString(arguments.get("servers"), null);
 				// backward comaptibility
 				if (strServers == null) {
 					String host = cast.toString(arguments.get("host"));
 					int port = cast.toIntValue(arguments.get("port", null), DEFAULT_PORT);
-					addresses = new InetSocketAddress[] { new InetSocketAddress(host, port) };
+					addresses.add(new InetSocketAddress(host, port));
 				} else {
 					strServers = strServers.trim();
 					String[] servers = strServers.split("\\s+");
-					addresses = new InetSocketAddress[servers.length];
 					int index;
 					String host;
 					for (int i = 0; i < servers.length; i++) {
 						host = servers[i].trim();
 						index = host.lastIndexOf(':');
 						if (index == -1) {
-							addresses[i] = new InetSocketAddress(host, DEFAULT_PORT);
+							addresses.add(new InetSocketAddress(host, DEFAULT_PORT));
 						} else {
-							addresses[i] = new InetSocketAddress(host.substring(0, index),
-									cast.toIntValue(host.substring(index + 1)));
+							addresses.add(new InetSocketAddress(host.substring(0, index),
+									cast.toIntValue(host.substring(index + 1))));
 						}
 					}
 				}
@@ -92,7 +97,8 @@ public class MemcachedCache extends CacheSupport {
 			defaultExpires = cast.toIntValue(arguments.get("default_expires", null), 600);
 			if (defaultExpires <= 0)
 				defaultExpires = 600;
-			_client = new MemcachedClient(addresses);
+			_client = new MemcachedClient(new ConnectionFactoryBuilder().setDaemon(true).setTranscoder(_transcoder)
+					.setFailureMode(FailureMode.Retry).build(), addresses);
 		}
 		return _client;
 	}
@@ -105,12 +111,12 @@ public class MemcachedCache extends CacheSupport {
 
 	@Override
 	public boolean contains(String key) throws IOException {
-		return getCache().get(keyTranslate(key), transcoder) != null; // make faster transcoder that does nothing
+		return getCache().get(keyTranslate(key)) != null; // make faster transcoder that does nothing
 	}
 
 	@Override
 	public CacheEntry getCacheEntry(String key, CacheEntry defaultValue) {
-		Object val = getCacheEL().get(keyTranslate(key), transcoder);
+		Object val = getCacheEL().get(keyTranslate(key));
 		if (val == null)
 			return defaultValue;
 		return toCacheEntry(key, val);
@@ -165,24 +171,6 @@ public class MemcachedCache extends CacheSupport {
 		info.setEL("miss_count_decr", Double.valueOf(stats.decr_misses()));
 		info.setEL("hit_count_incr", Double.valueOf(stats.incr_hits()));
 		info.setEL("miss_count_incr", Double.valueOf(stats.incr_misses()));
-
-		// testing
-		/*
-		 * Collection<String> slabs = getSlabs(); info.setEL("slabs", slabs);
-		 * Iterator<String> it = slabs.iterator(); String str; Struct data =
-		 * CFMLEngineFactory.getInstance().getCreationUtil().createStruct();
-		 * info.setEL("data", data); while (it.hasNext()) { str = it.next();
-		 * System.err.println("------------------->"); System.err.println("->" + str);
-		 * data.setEL(str, getCacheEL().getStats("cachedump " + str + " 0")); //
-		 * data.appendEL(getCacheEL().getStats("lru_crawler metadump " + str));
-		 * 
-		 * // lru_crawler metadump all
-		 * 
-		 * } for (int i = 1; i < 100; i++) { data.setEL(i + "",
-		 * getCacheEL().getStats("cachedump " + i + " 0")); }
-		 */
-
-		// data.appendEL(getCacheEL().getStats("lru_crawler metadump all"));
 
 		return info;
 	}
@@ -249,7 +237,7 @@ public class MemcachedCache extends CacheSupport {
 			exp = defaultExpires;
 		}
 		getCache().set(keyTranslate(key), exp > DAY ? ((int) (System.currentTimeMillis() / 1000L)) + exp : exp,
-				new MemcachedCacheEntry(key, val, null, null), transcoder);
+				new MemcachedCacheEntry(key, val, null, null));
 	}
 
 	//
@@ -294,19 +282,13 @@ public class MemcachedCache extends CacheSupport {
 			return (CacheEntry) obj;
 		// cache entry from different classloader?
 		if (CFMLEngineFactory.getInstance().getClassUtil().isInstaneOf(obj.getClass(), CacheEntry.class)) {
-			log("different classloader");
 			try {
 				Method m = obj.getClass().getMethod("getValue", new Class[0]);
 				obj = m.invoke(obj, new Object[0]);
 			} catch (Exception e) {
 			}
 		}
-		log("object is not a cache entry");
 		return new MemcachedCacheEntry(key, obj, null, null);
-	}
-
-	private void log(String msg) {
-		System.err.println(msg);
 	}
 
 }
