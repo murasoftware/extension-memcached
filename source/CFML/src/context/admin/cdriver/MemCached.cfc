@@ -21,7 +21,12 @@
 		field("Servers","servers","",true,"please define here a list of all Servers you wanna connect, please follow this pattern:<br> Host:Port&lt;new line><br> Host:Port&lt;new line><br>Host:Port","textarea")
 		,field("Expires","default_expires","600",false,
 			"default expires time for elements in cache","time")
-
+		,field('Failure Mode','failure_mode','Redistribute',true,
+			'Failure modes for node failures'
+			,"radio",'Redistribute,Retry,Cancel')
+		,field('Protocol','protocol','Binary',true,
+			'specify the protocol to use'
+			,"radio",'Binary,Text')
 	)>
     
 	<cffunction name="getClass" returntype="string">

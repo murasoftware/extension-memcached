@@ -16,12 +16,15 @@ import lucee.commons.io.cache.CacheEntry;
 import lucee.commons.io.cache.CachePro;
 import lucee.loader.engine.CFMLEngine;
 import lucee.loader.engine.CFMLEngineFactory;
+import lucee.loader.util.Util;
 import lucee.runtime.config.Config;
 import lucee.runtime.exp.PageException;
 import lucee.runtime.type.Struct;
 import lucee.runtime.util.Cast;
 import lucee.runtime.util.ListUtil;
+import net.spy.memcached.ConnectionFactory;
 import net.spy.memcached.ConnectionFactoryBuilder;
+import net.spy.memcached.ConnectionFactoryBuilder.Protocol;
 import net.spy.memcached.FailureMode;
 import net.spy.memcached.MemcachedClient;
 import net.spy.memcached.internal.OperationFuture;
@@ -35,9 +38,9 @@ public class MemcachedCache extends CacheSupport {
 	private String cacheName;
 	private Struct arguments;
 	private ClassLoader cl;
-	private TranscoderImpl _transcoder;
 	private List<InetSocketAddress> addresses;
 	private int defaultExpires;
+	private ConnectionFactory connFactory;
 
 	public static void init(Config config, String[] cacheNames, Struct[] arguments) throws IOException {
 	}
@@ -47,19 +50,9 @@ public class MemcachedCache extends CacheSupport {
 	public void init(Config config, String cacheName, Struct arguments) throws IOException {
 		this.cacheName = cacheName;
 		this.arguments = arguments;
-		_transcoder = new TranscoderImpl(config.getClassLoader());
-	}
+		TranscoderImpl _transcoder = new TranscoderImpl(config.getClassLoader());
 
-	private MemcachedClient getCacheEL() {
-		try {
-			return getCache();
-		} catch (Exception e) {
-			throw new RuntimeException(e);
-		}
-	}
-
-	private MemcachedClient getCache() throws IOException {
-		if (_client == null) {
+		{
 			CFMLEngine engine = CFMLEngineFactory.getInstance();
 			Cast cast = engine.getCastUtil();
 
@@ -97,9 +90,46 @@ public class MemcachedCache extends CacheSupport {
 			defaultExpires = cast.toIntValue(arguments.get("default_expires", null), 600);
 			if (defaultExpires <= 0)
 				defaultExpires = 600;
-			_client = new MemcachedClient(new ConnectionFactoryBuilder().setDaemon(true).setTranscoder(_transcoder)
-					.setFailureMode(FailureMode.Retry).build(), addresses);
+
+			// failure mode
+			FailureMode failureMode = toFailureMode(cast.toString(arguments.get("failure_mode", null), null),
+					FailureMode.Redistribute);
+			// protocol
+			Protocol protocol = toProtocol(cast.toString(arguments.get("protocol", null), null), Protocol.BINARY);
+
+			connFactory = new ConnectionFactoryBuilder().setDaemon(true).setTranscoder(_transcoder)
+					.setFailureMode(failureMode).setProtocol(protocol).build();
 		}
+
+	}
+
+	private Protocol toProtocol(String str, Protocol defaultValue) {
+		if (Util.isEmpty(str, true))
+			return defaultValue;
+		str = str.trim().toLowerCase();
+		if ("binary".equals(str))
+			return Protocol.BINARY;
+		if ("text".equals(str))
+			return Protocol.TEXT;
+		return defaultValue;
+	}
+
+	private static FailureMode toFailureMode(String str, FailureMode defaultValue) {
+		if (Util.isEmpty(str, true))
+			return defaultValue;
+		str = str.trim().toLowerCase();
+		if ("cancel".equals(str))
+			return FailureMode.Cancel;
+		if ("redistribute".equals(str))
+			return FailureMode.Redistribute;
+		if ("retry".equals(str))
+			return FailureMode.Retry;
+		return defaultValue;
+	}
+
+	private MemcachedClient getCache() throws IOException {
+		if (_client == null)
+			_client = new MemcachedClient(connFactory, addresses);
 		return _client;
 	}
 
@@ -116,21 +146,38 @@ public class MemcachedCache extends CacheSupport {
 
 	@Override
 	public CacheEntry getCacheEntry(String key, CacheEntry defaultValue) {
-		Object val = getCacheEL().get(keyTranslate(key));
+		Object val = null;
+		try {
+			val = getCache().get(keyTranslate(key));
+		} catch (Exception e) {
+		}
+
 		if (val == null)
 			return defaultValue;
 		return toCacheEntry(key, val);
 	}
 
-	public Stats getStats() {
-		Map<SocketAddress, Map<String, String>> raw = getCacheEL().getStats();
+	public Stats getStats(Stats defaultValue) {
+		MemcachedClient mcc;
+		try {
+			mcc = getCache();
+		} catch (Exception e) {
+			return defaultValue;
+		}
+		Map<SocketAddress, Map<String, String>> raw = mcc.getStats();
 		Stats s = new Stats(raw);
 
 		return s;
 	}
 
-	public int getCurrentItems() {
-		Map<SocketAddress, Map<String, String>> raw = getCacheEL().getStats();
+	public int getCurrentItems(int defaultValue) {
+		MemcachedClient mcc;
+		try {
+			mcc = getCache();
+		} catch (Exception e) {
+			return defaultValue;
+		}
+		Map<SocketAddress, Map<String, String>> raw = mcc.getStats();
 		Cast cast = CFMLEngineFactory.getInstance().getCastUtil();
 		Iterator<Map<String, String>> it = raw.values().iterator();
 		int currItems = 0;
@@ -143,44 +190,51 @@ public class MemcachedCache extends CacheSupport {
 	@Override
 	public Struct getCustomInfo() {
 		Struct info = CFMLEngineFactory.getInstance().getCreationUtil().createStruct();
-		Stats stats = getStats();
+		Stats stats = getStats(null);
+		if (stats != null) {
+			info.setEL("hit_count", Double.valueOf(hitCount(stats)));
+			info.setEL("miss_count", Double.valueOf(missCount(stats)));
+			info.setEL("bytes", Double.valueOf(stats.bytes()));
+			info.setEL("bytes_read", Double.valueOf(stats.bytes_read()));
+			info.setEL("bytes_written", Double.valueOf(stats.bytes_written()));
+			info.setEL("curr_connections", Double.valueOf(stats.curr_connections()));
+			info.setEL("total_connections", Double.valueOf(stats.total_connections()));
+			info.setEL("conn_yields", Double.valueOf(stats.conn_yields()));
+			info.setEL("curr_items", Double.valueOf(stats.curr_items()));
+			info.setEL("total_items", Double.valueOf(stats.total_items()));
+			info.setEL("evictions", Double.valueOf(stats.evictions()));
+			info.setEL("limit_maxbytes", Double.valueOf(stats.limit_maxbytes()));
+			info.setEL("threads", Double.valueOf(stats.threads()));
 
-		info.setEL("hit_count", Double.valueOf(hitCount(stats)));
-		info.setEL("miss_count", Double.valueOf(missCount(stats)));
-		info.setEL("bytes", Double.valueOf(stats.bytes()));
-		info.setEL("bytes_read", Double.valueOf(stats.bytes_read()));
-		info.setEL("bytes_written", Double.valueOf(stats.bytes_written()));
-		info.setEL("curr_connections", Double.valueOf(stats.curr_connections()));
-		info.setEL("total_connections", Double.valueOf(stats.total_connections()));
-		info.setEL("conn_yields", Double.valueOf(stats.conn_yields()));
-		info.setEL("curr_items", Double.valueOf(stats.curr_items()));
-		info.setEL("total_items", Double.valueOf(stats.total_items()));
-		info.setEL("evictions", Double.valueOf(stats.evictions()));
-		info.setEL("limit_maxbytes", Double.valueOf(stats.limit_maxbytes()));
-		info.setEL("threads", Double.valueOf(stats.threads()));
-
-		info.setEL("hit_count", Double.valueOf(hitCount(stats)));
-		info.setEL("miss_count", Double.valueOf(missCount(stats)));
-		info.setEL("hit_count_get", Double.valueOf(stats.get_hits()));
-		info.setEL("miss_count_get", Double.valueOf(stats.get_misses()));
-		info.setEL("hit_count_delete", Double.valueOf(stats.delete_hits()));
-		info.setEL("miss_count_delete", Double.valueOf(stats.delete_misses()));
-		info.setEL("hit_count_cas", Double.valueOf(stats.cas_hits()));
-		info.setEL("miss_count_cas", Double.valueOf(stats.cas_misses()));
-		info.setEL("hit_count_decr", Double.valueOf(stats.decr_hits()));
-		info.setEL("miss_count_decr", Double.valueOf(stats.decr_misses()));
-		info.setEL("hit_count_incr", Double.valueOf(stats.incr_hits()));
-		info.setEL("miss_count_incr", Double.valueOf(stats.incr_misses()));
-
+			info.setEL("hit_count", Double.valueOf(hitCount(stats)));
+			info.setEL("miss_count", Double.valueOf(missCount(stats)));
+			info.setEL("hit_count_get", Double.valueOf(stats.get_hits()));
+			info.setEL("miss_count_get", Double.valueOf(stats.get_misses()));
+			info.setEL("hit_count_delete", Double.valueOf(stats.delete_hits()));
+			info.setEL("miss_count_delete", Double.valueOf(stats.delete_misses()));
+			info.setEL("hit_count_cas", Double.valueOf(stats.cas_hits()));
+			info.setEL("miss_count_cas", Double.valueOf(stats.cas_misses()));
+			info.setEL("hit_count_decr", Double.valueOf(stats.decr_hits()));
+			info.setEL("miss_count_decr", Double.valueOf(stats.decr_misses()));
+			info.setEL("hit_count_incr", Double.valueOf(stats.incr_hits()));
+			info.setEL("miss_count_incr", Double.valueOf(stats.incr_misses()));
+		}
 		return info;
 	}
 
-	private Collection<String> getSlabs() {
+	private Collection<String> getSlabs(Collection<String> defaultValue) {
+		MemcachedClient mcc;
+		try {
+			mcc = getCache();
+		} catch (Exception e) {
+			return defaultValue;
+		}
+
 		Set<String> set = new HashSet<>();
 		CFMLEngine eng = CFMLEngineFactory.getInstance();
 		ListUtil lu = eng.getListUtil();
 
-		Iterator<Map<String, String>> it = getCacheEL().getStats("items").values().iterator();
+		Iterator<Map<String, String>> it = mcc.getStats("items").values().iterator();
 		Map<String, String> map;
 		Iterator<String> itt;
 		String[] arr;
@@ -197,20 +251,24 @@ public class MemcachedCache extends CacheSupport {
 
 	@Override
 	public long hitCount() {
-		return hitCount(getStats());
+		return hitCount(getStats(null));
 	}
 
 	private long hitCount(Stats stats) {
+		if (stats == null)
+			return 0;
 		return stats.get_hits() + stats.delete_hits() + stats.delete_hits() + stats.incr_hits() + stats.decr_hits()
 				+ stats.cas_hits();
 	}
 
 	@Override
 	public long missCount() {
-		return missCount(getStats());
+		return missCount(getStats(null));
 	}
 
 	private long missCount(Stats stats) {
+		if (stats == null)
+			return 0;
 		return stats.get_misses() + stats.delete_misses() + stats.delete_misses() + stats.incr_misses()
 				+ stats.decr_misses() + stats.cas_misses();
 	}
@@ -236,8 +294,12 @@ public class MemcachedCache extends CacheSupport {
 		} else {
 			exp = defaultExpires;
 		}
-		getCache().set(keyTranslate(key), exp > DAY ? ((int) (System.currentTimeMillis() / 1000L)) + exp : exp,
-				new MemcachedCacheEntry(key, val, null, null));
+		try {
+			getCache().set(keyTranslate(key), exp > DAY ? ((int) (System.currentTimeMillis() / 1000L)) + exp : exp,
+					new MemcachedCacheEntry(key, val, null, null)).get();
+		} catch (Exception e) {
+			throw CFMLEngineFactory.getInstance().getExceptionUtil().toIOException(e);
+		}
 	}
 
 	//
@@ -264,7 +326,7 @@ public class MemcachedCache extends CacheSupport {
 
 	@Override
 	public int clear() throws IOException {
-		int count = getCurrentItems();
+		int count = getCurrentItems(0);
 		try {
 			// Invalidate all items immediately
 			Boolean res = getCache().flush().get();
