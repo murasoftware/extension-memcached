@@ -11,6 +11,8 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 import lucee.commons.io.cache.CacheEntry;
 import lucee.commons.io.cache.CachePro;
@@ -25,9 +27,9 @@ import lucee.runtime.util.ListUtil;
 import net.spy.memcached.ConnectionFactory;
 import net.spy.memcached.ConnectionFactoryBuilder;
 import net.spy.memcached.ConnectionFactoryBuilder.Protocol;
+import net.spy.memcached.DefaultConnectionFactory;
 import net.spy.memcached.FailureMode;
 import net.spy.memcached.MemcachedClient;
-import net.spy.memcached.internal.OperationFuture;
 
 public class MemcachedCache extends CacheSupport {
 
@@ -127,10 +129,22 @@ public class MemcachedCache extends CacheSupport {
 		return defaultValue;
 	}
 
-	private MemcachedClient getCache() throws IOException {
-		if (_client == null)
+	private MemcachedClient getCache(boolean forceNewConnection) throws IOException {
+		if (forceNewConnection && _client != null) {
+			shutdownEL(_client);
+			_client = null;
+		}
+		if (_client == null) {
 			_client = new MemcachedClient(connFactory, addresses);
+		}
 		return _client;
+	}
+
+	private void shutdownEL(MemcachedClient c) {
+		try {
+			c.shutdown();
+		} catch (Exception e) {
+		}
 	}
 
 	@Override
@@ -141,14 +155,14 @@ public class MemcachedCache extends CacheSupport {
 
 	@Override
 	public boolean contains(String key) throws IOException {
-		return getCache().get(keyTranslate(key)) != null; // make faster transcoder that does nothing
+		return getCache(false).get(keyTranslate(key)) != null; // make faster transcoder that does nothing
 	}
 
 	@Override
 	public CacheEntry getCacheEntry(String key, CacheEntry defaultValue) {
 		Object val = null;
 		try {
-			val = getCache().get(keyTranslate(key));
+			val = getCache(false).get(keyTranslate(key));
 		} catch (Exception e) {
 		}
 
@@ -160,7 +174,7 @@ public class MemcachedCache extends CacheSupport {
 	public Stats getStats(Stats defaultValue) {
 		MemcachedClient mcc;
 		try {
-			mcc = getCache();
+			mcc = getCache(false);
 		} catch (Exception e) {
 			return defaultValue;
 		}
@@ -173,7 +187,7 @@ public class MemcachedCache extends CacheSupport {
 	public int getCurrentItems(int defaultValue) {
 		MemcachedClient mcc;
 		try {
-			mcc = getCache();
+			mcc = getCache(false);
 		} catch (Exception e) {
 			return defaultValue;
 		}
@@ -225,7 +239,7 @@ public class MemcachedCache extends CacheSupport {
 	private Collection<String> getSlabs(Collection<String> defaultValue) {
 		MemcachedClient mcc;
 		try {
-			mcc = getCache();
+			mcc = getCache(false);
 		} catch (Exception e) {
 			return defaultValue;
 		}
@@ -295,8 +309,16 @@ public class MemcachedCache extends CacheSupport {
 			exp = defaultExpires;
 		}
 		try {
-			getCache().set(keyTranslate(key), exp > DAY ? ((int) (System.currentTimeMillis() / 1000L)) + exp : exp,
-					new MemcachedCacheEntry(key, val, null, null)).get();
+			int _exp = exp > DAY ? ((int) (System.currentTimeMillis() / 1000L)) + exp : exp;
+			MemcachedCacheEntry mce = new MemcachedCacheEntry(key, val, null, null);
+			try {
+				getCache(true).set(keyTranslate(key), _exp, mce).get(DefaultConnectionFactory.DEFAULT_OPERATION_TIMEOUT,
+						TimeUnit.MILLISECONDS);
+			} catch (TimeoutException e) {
+				getCache(true).set(keyTranslate(key), _exp, mce).get(DefaultConnectionFactory.DEFAULT_OPERATION_TIMEOUT,
+						TimeUnit.MILLISECONDS);
+			}
+			System.out.println("all fine!!");
 		} catch (Exception e) {
 			throw CFMLEngineFactory.getInstance().getExceptionUtil().toIOException(e);
 		}
@@ -311,12 +333,27 @@ public class MemcachedCache extends CacheSupport {
 
 	@Override
 	public boolean remove(String key) throws IOException {
-		OperationFuture<Boolean> res = getCache().delete(keyTranslate(key));
 		try {
-			return res.get();
+			try {
+				return getCache(false).delete(keyTranslate(key)).get(DefaultConnectionFactory.DEFAULT_OPERATION_TIMEOUT,
+						TimeUnit.MILLISECONDS);
+			} catch (TimeoutException te) {
+				return getCache(true).delete(keyTranslate(key)).get(DefaultConnectionFactory.DEFAULT_OPERATION_TIMEOUT,
+						TimeUnit.MILLISECONDS);
+			}
+
 		} catch (Exception e) {
 			throw CFMLEngineFactory.getInstance().getExceptionUtil().toIOException(e);
 		}
+	}
+
+	public boolean remove(String[] keys) throws IOException {
+		boolean rtn = true;
+		for (String key : keys) {
+			if (!remove(key))
+				rtn = false;
+		}
+		return rtn;
 	}
 
 	@Override
@@ -329,7 +366,15 @@ public class MemcachedCache extends CacheSupport {
 		int count = getCurrentItems(0);
 		try {
 			// Invalidate all items immediately
-			Boolean res = getCache().flush().get();
+			Boolean res;
+			try {
+				res = getCache(false).flush().get(DefaultConnectionFactory.DEFAULT_OPERATION_TIMEOUT,
+						TimeUnit.MILLISECONDS);
+			} catch (TimeoutException te) {
+				res = getCache(true).flush().get(DefaultConnectionFactory.DEFAULT_OPERATION_TIMEOUT,
+						TimeUnit.MILLISECONDS);
+			}
+
 			if (Boolean.TRUE.equals(res)) {
 				return count;
 			}
