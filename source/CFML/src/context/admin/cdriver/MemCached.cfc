@@ -27,6 +27,9 @@
 		,field('Protocol','protocol','Binary',true,
 			'specify the protocol to use'
 			,"radio",'Binary,Text')
+		,field('Compress','compress','true',true,
+			'if enabled all objects bigger than 1mb get compressed (GZIP) when written to the cache and uncompressed when read again from the cache.'
+			,"checkbox")
 	)>
     
 	<cffunction name="getClass" returntype="string">

@@ -5,16 +5,24 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
+import java.util.zip.GZIPInputStream;
+import java.util.zip.GZIPOutputStream;
 
+import lucee.loader.util.Util;
 import net.spy.memcached.CachedData;
 import net.spy.memcached.transcoders.Transcoder;
 
 public class TranscoderImpl implements Transcoder<Object> {
+	private static final byte[] GZIP_HEADER = new byte[] { 31, -117, 8, 0 };
+	private final ClassLoader classLoader;
+	private final long maxSize;
+	private final boolean gzip;
 
-	private ClassLoader classLoader;
-
-	public TranscoderImpl(ClassLoader classLoader) {
+	public TranscoderImpl(ClassLoader classLoader, boolean gzip, long maxSize) {
 		this.classLoader = classLoader;
+		this.gzip = gzip;
+		this.maxSize = maxSize;
+
 	}
 
 	@Override
@@ -39,25 +47,42 @@ public class TranscoderImpl implements Transcoder<Object> {
 	}
 
 	public Object _decode(CachedData cd) throws ClassNotFoundException, IOException {
-		try {
-			return toObject(classLoader, cd.getData());
-		} catch (ClassNotFoundException e) {
-			e.printStackTrace();
-			throw e;
-		} catch (IOException e) {
-			e.printStackTrace();
-			throw e;
-		}
+		return toObject(classLoader, cd.getData());
 	}
 
 	@Override
 	public CachedData encode(Object t) {
 		try {
-			return new CachedData(0, toBytes(t), CachedData.MAX_SIZE);
+			byte[] bytes = toBytes(t);
+			if (gzip && bytes.length > maxSize)
+				bytes = gzip(bytes);
+			return new CachedData(0, bytes, CachedData.MAX_SIZE);
 		} catch (Exception e) {
 			e.printStackTrace();
 			throw new RuntimeException(e);
 		}
+	}
+
+	// a 10-byte header, containing a magic number (1f 8b)
+	private static boolean isGZip(byte[] bytes) {
+		return bytes.length > 4 && GZIP_HEADER[0] == bytes[0] && GZIP_HEADER[1] == bytes[1]
+				&& GZIP_HEADER[2] == bytes[2] && GZIP_HEADER[3] == bytes[3];
+	}
+
+	private static byte[] gzip(byte[] bytes) throws IOException {
+		ByteArrayInputStream is = new ByteArrayInputStream(bytes);
+		ByteArrayOutputStream baos = new ByteArrayOutputStream();
+		GZIPOutputStream gos = new GZIPOutputStream(baos);
+		Util.copy(is, gos, true, true);
+		return baos.toByteArray();
+	}
+
+	private static byte[] ungzip(byte[] bytes) throws IOException {
+		ByteArrayInputStream is = new ByteArrayInputStream(bytes);
+		GZIPInputStream gis = new GZIPInputStream(is);
+		ByteArrayOutputStream baos = new ByteArrayOutputStream();
+		Util.copy(gis, baos, true, true);
+		return baos.toByteArray();
 	}
 
 	@Override
@@ -65,7 +90,9 @@ public class TranscoderImpl implements Transcoder<Object> {
 		return CachedData.MAX_SIZE;
 	}
 
-	private static Object toObject(ClassLoader cl, byte[] data) throws IOException, ClassNotFoundException {
+	private Object toObject(ClassLoader cl, byte[] data) throws IOException, ClassNotFoundException {
+		if (gzip && isGZip(data))
+			data = ungzip(data);
 		ByteArrayInputStream bais = new ByteArrayInputStream(data);
 		ObjectInputStream ois = null;
 		try {

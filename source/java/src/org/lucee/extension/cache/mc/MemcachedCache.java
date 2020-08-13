@@ -35,6 +35,7 @@ public class MemcachedCache extends CacheSupport {
 
 	private static final int DEFAULT_PORT = 11211;
 	private static final int DAY = 60 * 60 * 24;
+	private static final long ONE_MB = 1024 * 1024;
 	MemcachedClient _client = null;
 	boolean caseSensitive = false;
 	private String cacheName;
@@ -52,16 +53,20 @@ public class MemcachedCache extends CacheSupport {
 	public void init(Config config, String cacheName, Struct arguments) throws IOException {
 		this.cacheName = cacheName;
 		this.arguments = arguments;
-		TranscoderImpl _transcoder = new TranscoderImpl(config.getClassLoader());
 
 		{
 			CFMLEngine engine = CFMLEngineFactory.getInstance();
 			Cast cast = engine.getCastUtil();
 
+			// maxSize (maximal size before objects get Compressed)
+			boolean gzip = cast.toBooleanValue(arguments.get("compress", null), false);
+			long maxSize = cast.toLongValue(arguments.get("maxsize", null), ONE_MB);
+			TranscoderImpl _transcoder = new TranscoderImpl(config.getClassLoader(), gzip, maxSize);
+
 			// host(s)/port(s)
 			List<InetSocketAddress> addresses = new ArrayList<>();
 			try {
-				String strServers = cast.toString(arguments.get("servers"), null);
+				String strServers = cast.toString(arguments.get("servers", null), null);
 				// backward comaptibility
 				if (strServers == null) {
 					String host = cast.toString(arguments.get("host"));
