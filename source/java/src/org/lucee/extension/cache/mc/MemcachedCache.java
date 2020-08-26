@@ -12,10 +12,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 
 import lucee.commons.io.cache.CacheEntry;
 import lucee.commons.io.cache.CachePro;
+import lucee.commons.io.log.Log;
 import lucee.loader.engine.CFMLEngine;
 import lucee.loader.engine.CFMLEngineFactory;
 import lucee.loader.util.Util;
@@ -44,6 +44,9 @@ public class MemcachedCache extends CacheSupport {
 	private List<InetSocketAddress> addresses;
 	private int defaultExpires;
 	private ConnectionFactory connFactory;
+	private Log log;
+	private long timeout = DefaultConnectionFactory.DEFAULT_OPERATION_TIMEOUT;
+	private static final Object token = new Object();
 
 	public static void init(Config config, String[] cacheNames, Struct[] arguments) throws IOException {
 	}
@@ -61,7 +64,15 @@ public class MemcachedCache extends CacheSupport {
 			// maxSize (maximal size before objects get Compressed)
 			boolean gzip = cast.toBooleanValue(arguments.get("compress", null), false);
 			long maxSize = cast.toLongValue(arguments.get("maxsize", null), ONE_MB);
-			TranscoderImpl _transcoder = new TranscoderImpl(config.getClassLoader(), gzip, maxSize);
+			timeout = cast.toLongValue(arguments.get("timeout", null),
+					DefaultConnectionFactory.DEFAULT_OPERATION_TIMEOUT);
+			// log
+			String strLog = cast.toString(arguments.get("log", null), null);
+			if (!Util.isEmpty(strLog, true)) {
+				this.log = config.getLog(strLog.trim());
+			}
+
+			TranscoderImpl _transcoder = new TranscoderImpl(config.getClassLoader(), gzip, maxSize, log);
 
 			// host(s)/port(s)
 			List<InetSocketAddress> addresses = new ArrayList<>();
@@ -134,22 +145,14 @@ public class MemcachedCache extends CacheSupport {
 		return defaultValue;
 	}
 
-	private MemcachedClient getCache(boolean forceNewConnection) throws IOException {
-		if (forceNewConnection && _client != null) {
-			shutdownEL(_client);
-			_client = null;
-		}
+	private MemcachedClient getCache() throws IOException {
 		if (_client == null) {
-			_client = new MemcachedClient(connFactory, addresses);
+			synchronized (token) {
+				if (_client == null)
+					_client = new MemcachedClient(connFactory, addresses);
+			}
 		}
 		return _client;
-	}
-
-	private void shutdownEL(MemcachedClient c) {
-		try {
-			c.shutdown();
-		} catch (Exception e) {
-		}
 	}
 
 	@Override
@@ -160,14 +163,14 @@ public class MemcachedCache extends CacheSupport {
 
 	@Override
 	public boolean contains(String key) throws IOException {
-		return getCache(false).get(keyTranslate(key)) != null; // make faster transcoder that does nothing
+		return getCache().get(keyTranslate(key)) != null; // make faster transcoder that does nothing
 	}
 
 	@Override
 	public CacheEntry getCacheEntry(String key, CacheEntry defaultValue) {
 		Object val = null;
 		try {
-			val = getCache(false).get(keyTranslate(key));
+			val = getCache().get(keyTranslate(key));
 		} catch (Exception e) {
 		}
 
@@ -179,7 +182,7 @@ public class MemcachedCache extends CacheSupport {
 	public Stats getStats(Stats defaultValue) {
 		MemcachedClient mcc;
 		try {
-			mcc = getCache(false);
+			mcc = getCache();
 		} catch (Exception e) {
 			return defaultValue;
 		}
@@ -192,7 +195,7 @@ public class MemcachedCache extends CacheSupport {
 	public int getCurrentItems(int defaultValue) {
 		MemcachedClient mcc;
 		try {
-			mcc = getCache(false);
+			mcc = getCache();
 		} catch (Exception e) {
 			return defaultValue;
 		}
@@ -244,7 +247,7 @@ public class MemcachedCache extends CacheSupport {
 	private Collection<String> getSlabs(Collection<String> defaultValue) {
 		MemcachedClient mcc;
 		try {
-			mcc = getCache(false);
+			mcc = getCache();
 		} catch (Exception e) {
 			return defaultValue;
 		}
@@ -316,14 +319,7 @@ public class MemcachedCache extends CacheSupport {
 		try {
 			int _exp = exp > DAY ? ((int) (System.currentTimeMillis() / 1000L)) + exp : exp;
 			MemcachedCacheEntry mce = new MemcachedCacheEntry(key, val, null, null);
-			try {
-				getCache(true).set(keyTranslate(key), _exp, mce).get(DefaultConnectionFactory.DEFAULT_OPERATION_TIMEOUT,
-						TimeUnit.MILLISECONDS);
-			} catch (TimeoutException e) {
-				getCache(true).set(keyTranslate(key), _exp, mce).get(DefaultConnectionFactory.DEFAULT_OPERATION_TIMEOUT,
-						TimeUnit.MILLISECONDS);
-			}
-			System.out.println("all fine!!");
+			getCache().set(keyTranslate(key), _exp, mce).get(timeout, TimeUnit.MILLISECONDS);
 		} catch (Exception e) {
 			throw CFMLEngineFactory.getInstance().getExceptionUtil().toIOException(e);
 		}
@@ -339,14 +335,7 @@ public class MemcachedCache extends CacheSupport {
 	@Override
 	public boolean remove(String key) throws IOException {
 		try {
-			try {
-				return getCache(false).delete(keyTranslate(key)).get(DefaultConnectionFactory.DEFAULT_OPERATION_TIMEOUT,
-						TimeUnit.MILLISECONDS);
-			} catch (TimeoutException te) {
-				return getCache(true).delete(keyTranslate(key)).get(DefaultConnectionFactory.DEFAULT_OPERATION_TIMEOUT,
-						TimeUnit.MILLISECONDS);
-			}
-
+			return getCache().delete(keyTranslate(key)).get(timeout, TimeUnit.MILLISECONDS);
 		} catch (Exception e) {
 			throw CFMLEngineFactory.getInstance().getExceptionUtil().toIOException(e);
 		}
@@ -372,14 +361,7 @@ public class MemcachedCache extends CacheSupport {
 		try {
 			// Invalidate all items immediately
 			Boolean res;
-			try {
-				res = getCache(false).flush().get(DefaultConnectionFactory.DEFAULT_OPERATION_TIMEOUT,
-						TimeUnit.MILLISECONDS);
-			} catch (TimeoutException te) {
-				res = getCache(true).flush().get(DefaultConnectionFactory.DEFAULT_OPERATION_TIMEOUT,
-						TimeUnit.MILLISECONDS);
-			}
-
+			res = getCache().flush().get(timeout, TimeUnit.MILLISECONDS);
 			if (Boolean.TRUE.equals(res)) {
 				return count;
 			}

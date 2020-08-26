@@ -30,6 +30,8 @@
 		,field('Compress','compress','true',true,
 			'if enabled all objects bigger than 1mb get compressed (GZIP) when written to the cache and uncompressed when read again from the cache.'
 			,"checkbox")
+		,field("Log","log","",false,"Name of an existing log, you wanna store information into.","text")
+		
 	)>
     
 	<cffunction name="getClass" returntype="string">
