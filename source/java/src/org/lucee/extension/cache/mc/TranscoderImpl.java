@@ -8,6 +8,7 @@ import java.io.ObjectOutputStream;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.GZIPOutputStream;
 
+import lucee.commons.io.log.Log;
 import lucee.loader.util.Util;
 import net.spy.memcached.CachedData;
 import net.spy.memcached.transcoders.Transcoder;
@@ -17,12 +18,13 @@ public class TranscoderImpl implements Transcoder<Object> {
 	private final ClassLoader classLoader;
 	private final long maxSize;
 	private final boolean gzip;
+	private final Log log;
 
-	public TranscoderImpl(ClassLoader classLoader, boolean gzip, long maxSize) {
+	public TranscoderImpl(ClassLoader classLoader, boolean gzip, long maxSize, Log log) {
 		this.classLoader = classLoader;
 		this.gzip = gzip;
 		this.maxSize = maxSize;
-
+		this.log = log;
 	}
 
 	@Override
@@ -41,7 +43,6 @@ public class TranscoderImpl implements Transcoder<Object> {
 		try {
 			return _decode(cd);
 		} catch (Exception e) {
-			e.printStackTrace();
 			throw new RuntimeException(e);
 		}
 	}
@@ -54,8 +55,20 @@ public class TranscoderImpl implements Transcoder<Object> {
 	public CachedData encode(Object t) {
 		try {
 			byte[] bytes = toBytes(t);
-			if (gzip && bytes.length > maxSize)
-				bytes = gzip(bytes);
+			if (bytes.length > maxSize) {
+				if (log != null) {
+
+					log.log(gzip ? Log.LEVEL_WARN : Log.LEVEL_ERROR, "memcached",
+							"reached max size [" + maxSize + "], value is [" + bytes.length + "]");
+				}
+				if (gzip) {
+					long before = bytes.length;
+					bytes = gzip(bytes);
+					if (log != null && bytes.length > maxSize)
+						log.error("memcached", "value with size [raw:" + before + ";compressed:" + bytes.length
+								+ "] is still to big, it should be not bigger than [" + maxSize + "]");
+				}
+			}
 			return new CachedData(0, bytes, CachedData.MAX_SIZE);
 		} catch (Exception e) {
 			e.printStackTrace();
