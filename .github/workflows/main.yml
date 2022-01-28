@@ -55,3 +55,5 @@ jobs:
         extensions: 8D7FB0DF-08BB-1589-FE3975678F07DB17,37C61C0A-5D7E-4256-8572639BE0CF5838 # the compress and esapi extensiona are required to run tests lucee with lucee-light
       env:
         testLabels: memcached
+        MEMCACHED_PORT: 11211
+        MEMCACHED_SERVER: localhost
